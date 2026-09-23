@@ -1,0 +1,48 @@
+name: SmartMediVend S3 voice firmware
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One variant only: do not compile the 178 unrelated Xiaozhi boards on each push.
+concurrency:
+  group: smartmedivend-s3-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  voice-firmware:
+    name: Test and build ESP32-S3 voice firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: espressif/idf:v6.1
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+
+      - name: Run build and voice-only regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s scripts/tests -v
+
+      - name: Compile the SmartMediVend S3 firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$IDF_PATH/export.sh"
+          python scripts/build.py smartmedivend-s3 --name smartmedivend-s3 --language vi-VN --wake-word disabled
+
+      - name: Upload firmware on success
+        uses: actions/upload-artifact@v4
+        with:
+          name: smartmedivend-s3-voice-${{ github.sha }}
+          path: build/merged-binary.bin
+          if-no-files-found: error
+          retention-days: 7
